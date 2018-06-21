@@ -305,6 +305,8 @@ jobs:
                 "name": "src/electron",
               },
             ]
+            GCLIENT
+
             gclient sync --with_branch_heads --with_tags
       - run:
           name: GN gen
