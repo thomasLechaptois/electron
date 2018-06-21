@@ -283,7 +283,40 @@ jobs:
       xcode: "8.3.3"
     <<: *build-steps
 
-
+  electron-linux-gn:
+    docker:
+      - image: electronbuilds/libchromiumcontent:0.0.4
+    resource_class: 2xlarge
+    steps:
+      - run:
+          name: Setup depot tools
+          command: |
+            git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+            echo 'export PATH=$PATH:$CIRCLE_WORKING_DIRECTORY/depot_tools' >> $BASH_ENV
+            source $BASH_ENV
+      - run:
+          name: Gclient sync
+          command: |
+            cat > .gclient <<-GCLIENT
+            solutions = [
+              {
+                "url": "https://github.com/electron/electron",
+                "managed": False,
+                "name": "src/electron",
+              },
+            ]
+            gclient sync --with_branch_heads --with_tags
+      - run:
+          name: GN gen
+          command: |
+            cd src
+            echo 'export CHROMIUM_BUILDTOOLS_PATH=`pwd`/buildtools' >> $BASH_ENV
+            source $BASH_ENV
+            gn gen out/Default --args='root_extra_deps=["//electron"] is_electron_build=true is_component_build=true use_jumbo_build=true v8_promise_internal_field_count=1 v8_typed_array_max_size_in_heap=0'
+      - run:
+          name: Ninja build
+          command: |
+             ninja -C out/Default electron:electron_app
 workflows:
   version: 2
   build-arm:
@@ -310,6 +343,9 @@ workflows:
   build-mas-x64:
     jobs:
       - electron-mas-x64
+  build-gn-linux:
+    jobs:
+      - electron-linux-gn
 
   nightly-release-test:
     triggers:
