@@ -285,7 +285,7 @@ jobs:
 
   electron-linux-gn:
     docker:
-      - image: electronbuilds/libchromiumcontent:0.0.4
+      - image: electronbuilds/electron:0.0.8
     resource_class: 2xlarge
     steps:
       - run:
@@ -319,6 +319,21 @@ jobs:
           name: Ninja build
           command: |
              ninja -C out/Default electron:electron_app
+      - run:
+          name: Setup for headless testing
+          environment:
+            DISPLAY: ':99.0'
+          command: |
+            sh -e /etc/init.d/xvfb start
+      - run:
+          name: Test
+          environment:
+            MOCHA_FILE: junit/test-results.xml
+            MOCHA_REPORTER: mocha-junit-reporter
+          command: |
+             (cd electron/spec && npm i --nodedir=../../third_party/electron_node)
+             ./out/Default/electron electron/spec --ci
+
 workflows:
   version: 2
   build-arm:
