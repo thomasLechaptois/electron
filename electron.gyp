@@ -10,7 +10,7 @@
   'includes': [
     'features.gypi',
     'filenames.gypi',
-    'vendor/native_mate/native_mate_files.gypi',
+    'native_mate/native_mate_files.gypi',
   ],
   'target_defaults': {
     'defines': [
@@ -23,16 +23,36 @@
           '<(source_root)/external_binaries',
         ],
       }],
+      ['enable_desktop_capturer==1', {
+        'defines': [
+          'ENABLE_DESKTOP_CAPTURER',
+        ],
+      }],  # enable_desktop_capturer==1
       ['enable_osr==1', {
         'defines': [
           'ENABLE_OSR',
         ],
       }],  # enable_osr==1
-      ['enable_run_as_node', {
+      ['enable_pdf_viewer==1', {
+        'defines': [
+          'ENABLE_PDF_VIEWER',
+        ],
+      }],  # enable_pdf_viewer
+      ['enable_run_as_node==1', {
         'defines': [
           'ENABLE_RUN_AS_NODE',
         ],
       }],  # enable_run_as_node
+      ['enable_view_api==1', {
+        'defines': [
+          'ENABLE_VIEW_API',
+        ],
+      }],  # enable_view_api
+      ['enable_pepper_flash==1', {
+        'defines': [
+          'ENABLE_PEPPER_FLASH',
+        ],
+      }],  # enable_pepper_flash
     ],
   },
   'targets': [
@@ -160,6 +180,9 @@
               # of /SUBSYSTEM:WINDOWS,5.02
               'MinimumRequiredVersion': '5.02',
               'SubSystem': '2',
+              'AdditionalDependencies': [
+                'wtsapi32.lib',
+              ],
             },
           },
           'copies': [
@@ -191,7 +214,7 @@
                 '<(libchromiumcontent_dir)/ui_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/views_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/natives_blob.bin',
-                '<(libchromiumcontent_dir)/snapshot_blob.bin',
+                '<(libchromiumcontent_dir)/v8_context_snapshot.bin',
                 'external_binaries/d3dcompiler_47.dll',
               ],
             },
@@ -231,7 +254,7 @@
                 '<(libchromiumcontent_dir)/ui_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/views_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/natives_blob.bin',
-                '<(libchromiumcontent_dir)/snapshot_blob.bin',
+                '<(libchromiumcontent_dir)/v8_context_snapshot.bin',
               ],
             },
           ],
@@ -243,9 +266,8 @@
       'type': 'static_library',
       'dependencies': [
         'atom_js2c',
-        'vendor/pdf_viewer/pdf_viewer.gyp:pdf_viewer',
         'brightray/brightray.gyp:brightray',
-        'vendor/node/node.gyp:node',
+        'vendor/node/node.gyp:node_lib',
       ],
       'defines': [
         # We need to access internal implementations of Node.
@@ -268,6 +290,9 @@
         # See Chromium src/third_party/protobuf/BUILD.gn
         'GOOGLE_PROTOBUF_NO_RTTI',
         'GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER',
+
+        # Enables SkBitmap size 64 operations
+        'SK_SUPPORT_LEGACY_SAFESIZE64',
       ],
       'sources': [
         '<@(lib_sources)',
@@ -275,7 +300,7 @@
       'include_dirs': [
         '.',
         'chromium_src',
-        'vendor/native_mate',
+        'native_mate',
         # Include atom_natives.h.
         '<(SHARED_INTERMEDIATE_DIR)',
         # Include directories for uv and node.
@@ -294,7 +319,13 @@
         '<(libchromiumcontent_src_dir)/third_party/',
         '<(libchromiumcontent_src_dir)/components/cdm',
         '<(libchromiumcontent_src_dir)/third_party/widevine',
+        '<(libchromiumcontent_src_dir)/third_party/widevine/cdm/stub',
         '<(libchromiumcontent_src_dir)/third_party/protobuf/src',
+        # The 'third_party/webrtc/modules/desktop_capture/desktop_capture_options.h' is using 'rtc_base/constructormagic.h'.
+        '<(libchromiumcontent_src_dir)/third_party/webrtc',
+        # leveldb includes are required
+        '<(libchromiumcontent_src_dir)/third_party/leveldatabase/src',
+        '<(libchromiumcontent_src_dir)/third_party/leveldatabase/src/include',
       ],
       'direct_dependent_settings': {
         'include_dirs': [
@@ -305,6 +336,30 @@
         'brightray/brightray.gyp:brightray',
       ],
       'conditions': [
+        ['enable_pdf_viewer==1', {
+          'dependencies': [
+            'vendor/pdf_viewer/pdf_viewer.gyp:pdf_viewer',
+          ],
+        }],  # enable_pdf_viewer
+        ['enable_pepper_flash==1', {
+          'include_dirs': [
+            '<(libchromiumcontent_src_dir)/chrome/browser/renderer_host/pepper',
+            '<(libchromiumcontent_src_dir)/chrome/renderer/pepper',
+          ],
+          'link_settings': {
+            'conditions': [
+              ['OS=="win"', {
+                'libraries': [
+                  '<(libchromiumcontent_dir)/pepper_flash.lib',
+                ]
+              }, {
+                'libraries': [
+                  '<(libchromiumcontent_dir)/libpepper_flash.a',
+                ]
+              }],
+            ],
+          },
+        }],  # enable_pepper_flash
         ['libchromiumcontent_component', {
           'link_settings': {
             'libraries': [ '<@(libchromiumcontent_v8_libraries)' ],
@@ -324,6 +379,7 @@
               '-lwinmm.lib',
               '-lcrypt32.lib',
               '-luiautomationcore.lib',
+              '-lPropsys.lib'
             ],
           },
           'dependencies': [
@@ -352,6 +408,10 @@
           'xcode_settings': {
             # ReactiveCocoa which is used by Squirrel requires using __weak.
             'CLANG_ENABLE_OBJC_WEAK': 'YES',
+            'OTHER_CFLAGS': [
+              '-Wunguarded-availability',
+              '-Wobjc-missing-property-synthesis',
+            ],
           },
         }],  # OS=="mac" and mas_build==0
         ['OS=="mac" and mas_build==1', {
@@ -362,6 +422,13 @@
             'atom/browser/auto_updater_mac.mm',
             'atom/common/crash_reporter/crash_reporter_mac.h',
             'atom/common/crash_reporter/crash_reporter_mac.mm',
+          ],
+          'dependencies': [
+            # Somehow we have code from Chromium using crashpad, very likely
+            # from components/crash.
+            # Since we do not actually invoke code from components/crash, this
+            # dependency should be eventually optimized out by linker.
+            'vendor/crashpad/client/client.gyp:crashpad_client',
           ],
         }],  # OS=="mac" and mas_build==1
         ['OS=="linux"', {
@@ -560,6 +627,7 @@
           'action': [
             'python',
             'tools/js2c.py',
+            'vendor/node',
             '<@(_outputs)',
             '<(js2c_input_dir)',
           ],
@@ -602,11 +670,14 @@
           'mac_bundle': 1,
           'mac_bundle_resources': [
             'atom/common/resources/mac/MainMenu.xib',
-            '<(libchromiumcontent_dir)/content_shell.pak',
             '<(libchromiumcontent_dir)/icudtl.dat',
+            '<(libchromiumcontent_dir)/blink_image_resources_200_percent.pak',
+            '<(libchromiumcontent_dir)/content_resources_200_percent.pak',
+            '<(libchromiumcontent_dir)/content_shell.pak',
+            '<(libchromiumcontent_dir)/ui_resources_200_percent.pak',
+            '<(libchromiumcontent_dir)/views_resources_200_percent.pak',
             '<(libchromiumcontent_dir)/natives_blob.bin',
-            '<(libchromiumcontent_dir)/snapshot_blob.bin',
-            '<(PRODUCT_DIR)/pdf_viewer_resources.pak',
+            '<(libchromiumcontent_dir)/v8_context_snapshot.bin',
           ],
           'xcode_settings': {
             'ATOM_BUNDLE_ID': 'com.<(company_abbr).<(project_name).framework',
@@ -674,6 +745,11 @@
             },
           ],
           'conditions': [
+            ['enable_pdf_viewer==1', {
+              'mac_bundle_resources': [
+                '<(PRODUCT_DIR)/pdf_viewer_resources.pak',
+              ],
+            }],  # enable_pdf_viewer
             ['mas_build==0', {
               'link_settings': {
                 'libraries': [

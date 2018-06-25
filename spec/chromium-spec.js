@@ -7,10 +7,9 @@ const url = require('url')
 const ChildProcess = require('child_process')
 const {ipcRenderer, remote} = require('electron')
 const {closeWindow} = require('./window-helpers')
-
 const {app, BrowserWindow, ipcMain, protocol, session, webContents} = remote
-
 const isCI = remote.getGlobal('isCi')
+const features = process.atomBinding('features')
 
 /* Most of the APIs here don't use standard callbacks */
 /* eslint-disable standard/no-callback-literal */
@@ -29,6 +28,7 @@ describe('chromium feature', () => {
 
   describe('command line switches', () => {
     describe('--lang switch', () => {
+      const currentLocale = app.getLocale()
       const testLocale = (locale, result, done) => {
         const appPath = path.join(__dirname, 'fixtures', 'api', 'locale-check')
         const electronPath = remote.getGlobal('process').execPath
@@ -44,7 +44,7 @@ describe('chromium feature', () => {
       }
 
       it('should set the locale', (done) => testLocale('fr', 'fr', done))
-      it('should not set an invalid locale', (done) => testLocale('asdfkl', 'en-US', done))
+      it('should not set an invalid locale', (done) => testLocale('asdfkl', currentLocale, done))
     })
   })
 
@@ -132,17 +132,30 @@ describe('chromium feature', () => {
     })
   })
 
+  describe('navigator.languages', (done) => {
+    it('should return the system locale only', () => {
+      let appLocale = app.getLocale()
+      assert.equal(navigator.languages.length, 1)
+      assert.equal(navigator.languages[0], appLocale)
+    })
+  })
+
   describe('navigator.serviceWorker', () => {
     it('should register for file scheme', (done) => {
-      w = new BrowserWindow({ show: false })
+      w = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          partition: 'sw-file-scheme-spec'
+        }
+      })
       w.webContents.on('ipc-message', (event, args) => {
         if (args[0] === 'reload') {
           w.webContents.reload()
         } else if (args[0] === 'error') {
-          done(`unexpected error : ${args[1]}`)
+          done(args[1])
         } else if (args[0] === 'response') {
           assert.equal(args[1], 'Hello from serviceWorker!')
-          session.defaultSession.clearStorageData({
+          session.fromPartition('sw-file-scheme-spec').clearStorageData({
             storages: ['serviceworkers']
           }, () => done())
         }
@@ -223,6 +236,26 @@ describe('chromium feature', () => {
       b = window.open(`file://${fixtures}/pages/window-open-size.html`, '', 'show=no')
     })
 
+    for (const show of [true, false]) {
+      it(`inherits parent visibility over parent {show=${show}} option`, (done) => {
+        const w = new BrowserWindow({show})
+
+        // toggle visibility
+        if (show) {
+          w.hide()
+        } else {
+          w.show()
+        }
+
+        w.webContents.once('new-window', (e, url, frameName, disposition, options) => {
+          assert.equal(options.show, w.isVisible())
+          w.close()
+          done()
+        })
+        w.loadURL(`file://${fixtures}/pages/window-open.html`)
+      })
+    }
+
     it('disables node integration when it is disabled on the parent window', (done) => {
       let b
       listener = (event) => {
@@ -237,6 +270,26 @@ describe('chromium feature', () => {
         protocol: 'file',
         query: {
           p: `${fixtures}/pages/window-opener-node.html`
+        },
+        slashes: true
+      })
+      b = window.open(windowUrl, '', 'nodeIntegration=no,show=no')
+    })
+
+    it('disables webviewTag when node integration is disabled on the parent window', (done) => {
+      let b
+      listener = (event) => {
+        assert.equal(event.data.isWebViewUndefined, true)
+        b.close()
+        done()
+      }
+      window.addEventListener('message', listener)
+
+      const windowUrl = require('url').format({
+        pathname: `${fixtures}/pages/window-opener-no-web-view-tag.html`,
+        protocol: 'file',
+        query: {
+          p: `${fixtures}/pages/window-opener-web-view.html`
         },
         slashes: true
       })
@@ -262,7 +315,7 @@ describe('chromium feature', () => {
       app.once('web-contents-created', (event, contents) => {
         contents.once('did-finish-load', () => {
           app.once('browser-window-created', (event, window) => {
-            const preferences = window.webContents.getWebPreferences()
+            const preferences = window.webContents.getLastWebPreferences()
             assert.equal(preferences.javascript, false)
             window.destroy()
             b.close()
@@ -484,7 +537,7 @@ describe('chromium feature', () => {
         done()
       }
       window.addEventListener('message', listener)
-      w = window.open(url, '', 'show=no')
+      w = window.open(url, '', 'show=no,nodeIntegration=no')
     })
 
     it('works when origin matches', (done) => {
@@ -493,7 +546,7 @@ describe('chromium feature', () => {
         done()
       }
       window.addEventListener('message', listener)
-      w = window.open(`file://${fixtures}/pages/window-opener-location.html`, '', 'show=no')
+      w = window.open(`file://${fixtures}/pages/window-opener-location.html`, '', 'show=no,nodeIntegration=no')
     })
 
     it('works when origin does not match opener but has node integration', (done) => {
@@ -901,8 +954,8 @@ describe('chromium feature', () => {
         const port = server.address().port
         wss = new WebSocketServer({ server: server })
         wss.on('error', done)
-        wss.on('connection', (ws) => {
-          if (ws.upgradeReq.headers['user-agent']) {
+        wss.on('connection', (ws, upgradeReq) => {
+          if (upgradeReq.headers['user-agent']) {
             done()
           } else {
             done('user agent is empty')
@@ -972,55 +1025,64 @@ describe('chromium feature', () => {
   })
 
   describe('PDF Viewer', () => {
-    const pdfSource = url.format({
-      pathname: path.join(fixtures, 'assets', 'cat.pdf').replace(/\\/g, '/'),
-      protocol: 'file',
-      slashes: true
-    })
-    const pdfSourceWithParams = url.format({
-      pathname: path.join(fixtures, 'assets', 'cat.pdf').replace(/\\/g, '/'),
-      query: {
-        a: 1,
-        b: 2
-      },
-      protocol: 'file',
-      slashes: true
+    before(function () {
+      if (!features.isPDFViewerEnabled()) {
+        return this.skip()
+      }
     })
 
-    function createBrowserWindow ({plugins, preload}) {
-      w = new BrowserWindow({
-        show: false,
-        webPreferences: {
-          preload: path.join(fixtures, 'module', preload),
-          plugins: plugins
-        }
-      })
-    }
-
-    function testPDFIsLoadedInSubFrame (page, preloadFile, done) {
-      const pagePath = url.format({
-        pathname: path.join(fixtures, 'pages', page).replace(/\\/g, '/'),
+    beforeEach(() => {
+      this.pdfSource = url.format({
+        pathname: path.join(fixtures, 'assets', 'cat.pdf').replace(/\\/g, '/'),
         protocol: 'file',
         slashes: true
       })
 
-      createBrowserWindow({plugins: true, preload: preloadFile})
-      ipcMain.once('pdf-loaded', (event, state) => {
-        assert.equal(state, 'success')
-        done()
+      this.pdfSourceWithParams = url.format({
+        pathname: path.join(fixtures, 'assets', 'cat.pdf').replace(/\\/g, '/'),
+        query: {
+          a: 1,
+          b: 2
+        },
+        protocol: 'file',
+        slashes: true
       })
-      w.webContents.on('page-title-updated', () => {
-        const parsedURL = url.parse(w.webContents.getURL(), true)
-        assert.equal(parsedURL.protocol, 'chrome:')
-        assert.equal(parsedURL.hostname, 'pdf-viewer')
-        assert.equal(parsedURL.query.src, pagePath)
-        assert.equal(w.webContents.getTitle(), 'cat.pdf')
-      })
-      w.webContents.loadURL(pagePath)
-    }
+
+      this.createBrowserWindow = ({plugins, preload}) => {
+        w = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            preload: path.join(fixtures, 'module', preload),
+            plugins: plugins
+          }
+        })
+      }
+
+      this.testPDFIsLoadedInSubFrame = (page, preloadFile, done) => {
+        const pagePath = url.format({
+          pathname: path.join(fixtures, 'pages', page).replace(/\\/g, '/'),
+          protocol: 'file',
+          slashes: true
+        })
+
+        this.createBrowserWindow({plugins: true, preload: preloadFile})
+        ipcMain.once('pdf-loaded', (event, state) => {
+          assert.equal(state, 'success')
+          done()
+        })
+        w.webContents.on('page-title-updated', () => {
+          const parsedURL = url.parse(w.webContents.getURL(), true)
+          assert.equal(parsedURL.protocol, 'chrome:')
+          assert.equal(parsedURL.hostname, 'pdf-viewer')
+          assert.equal(parsedURL.query.src, pagePath)
+          assert.equal(w.webContents.getTitle(), 'cat.pdf')
+        })
+        w.webContents.loadURL(pagePath)
+      }
+    })
 
     it('opens when loading a pdf resource as top level navigation', (done) => {
-      createBrowserWindow({plugins: true, preload: 'preload-pdf-loaded.js'})
+      this.createBrowserWindow({plugins: true, preload: 'preload-pdf-loaded.js'})
       ipcMain.once('pdf-loaded', (event, state) => {
         assert.equal(state, 'success')
         done()
@@ -1029,14 +1091,14 @@ describe('chromium feature', () => {
         const parsedURL = url.parse(w.webContents.getURL(), true)
         assert.equal(parsedURL.protocol, 'chrome:')
         assert.equal(parsedURL.hostname, 'pdf-viewer')
-        assert.equal(parsedURL.query.src, pdfSource)
+        assert.equal(parsedURL.query.src, this.pdfSource)
         assert.equal(w.webContents.getTitle(), 'cat.pdf')
       })
-      w.webContents.loadURL(pdfSource)
+      w.webContents.loadURL(this.pdfSource)
     })
 
     it('opens a pdf link given params, the query string should be escaped', (done) => {
-      createBrowserWindow({plugins: true, preload: 'preload-pdf-loaded.js'})
+      this.createBrowserWindow({plugins: true, preload: 'preload-pdf-loaded.js'})
       ipcMain.once('pdf-loaded', (event, state) => {
         assert.equal(state, 'success')
         done()
@@ -1045,16 +1107,16 @@ describe('chromium feature', () => {
         const parsedURL = url.parse(w.webContents.getURL(), true)
         assert.equal(parsedURL.protocol, 'chrome:')
         assert.equal(parsedURL.hostname, 'pdf-viewer')
-        assert.equal(parsedURL.query.src, pdfSourceWithParams)
+        assert.equal(parsedURL.query.src, this.pdfSourceWithParams)
         assert.equal(parsedURL.query.b, undefined)
-        assert.equal(parsedURL.search, `?src=${pdfSource}%3Fa%3D1%26b%3D2`)
+        assert(parsedURL.search.endsWith('%3Fa%3D1%26b%3D2'))
         assert.equal(w.webContents.getTitle(), 'cat.pdf')
       })
-      w.webContents.loadURL(pdfSourceWithParams)
+      w.webContents.loadURL(this.pdfSourceWithParams)
     })
 
     it('should download a pdf when plugins are disabled', (done) => {
-      createBrowserWindow({plugins: false, preload: 'preload-pdf-loaded.js'})
+      this.createBrowserWindow({plugins: false, preload: 'preload-pdf-loaded.js'})
       ipcRenderer.sendSync('set-download-option', false, false)
       ipcRenderer.once('download-done', (event, state, url, mimeType, receivedBytes, totalBytes, disposition, filename) => {
         assert.equal(state, 'completed')
@@ -1063,11 +1125,11 @@ describe('chromium feature', () => {
         fs.unlinkSync(path.join(fixtures, 'mock.pdf'))
         done()
       })
-      w.webContents.loadURL(pdfSource)
+      w.webContents.loadURL(this.pdfSource)
     })
 
     it('should not open when pdf is requested as sub resource', (done) => {
-      fetch(pdfSource).then((res) => {
+      fetch(this.pdfSource).then((res) => {
         assert.equal(res.status, 200)
         assert.notEqual(document.title, 'cat.pdf')
         done()
@@ -1075,11 +1137,11 @@ describe('chromium feature', () => {
     })
 
     it('opens when loading a pdf resource in a iframe', (done) => {
-      testPDFIsLoadedInSubFrame('pdf-in-iframe.html', 'preload-pdf-loaded-in-subframe.js', done)
+      this.testPDFIsLoadedInSubFrame('pdf-in-iframe.html', 'preload-pdf-loaded-in-subframe.js', done)
     })
 
     it('opens when loading a pdf resource in a nested iframe', (done) => {
-      testPDFIsLoadedInSubFrame('pdf-in-nested-iframe.html', 'preload-pdf-loaded-in-nested-subframe.js', done)
+      this.testPDFIsLoadedInSubFrame('pdf-in-nested-iframe.html', 'preload-pdf-loaded-in-nested-subframe.js', done)
     })
   })
 
@@ -1088,10 +1150,6 @@ describe('chromium feature', () => {
       assert.throws(() => {
         window.alert({toString: null})
       }, /Cannot convert object to primitive value/)
-
-      assert.throws(() => {
-        window.alert('message', {toString: 3})
-      }, /Cannot convert object to primitive value/)
     })
   })
 
@@ -1099,10 +1157,6 @@ describe('chromium feature', () => {
     it('throws an exception when the arguments cannot be converted to strings', () => {
       assert.throws(() => {
         window.confirm({toString: null}, 'title')
-      }, /Cannot convert object to primitive value/)
-
-      assert.throws(() => {
-        window.confirm('message', {toString: 3})
       }, /Cannot convert object to primitive value/)
     })
   })

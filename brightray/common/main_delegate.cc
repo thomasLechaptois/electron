@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "base/command_line.h"
+#include "base/mac/bundle_locations.h"
 #include "base/path_service.h"
 #include "brightray/browser/browser_client.h"
 #include "brightray/common/content_client.h"
@@ -27,8 +28,8 @@ bool SubprocessNeedsResourceBundle(const std::string& process_type) {
       process_type == switches::kZygoteProcess ||
 #endif
 #if defined(OS_MACOSX)
-      // Mac needs them too for scrollbar related images and for sandbox
-      // profiles.
+  // Mac needs them too for scrollbar related images and for sandbox
+  // profiles.
 #if !defined(DISABLE_NACL)
       process_type == switches::kNaClLoaderProcess ||
 #endif
@@ -48,23 +49,26 @@ void LoadResourceBundle(const std::string& locale) {
     ui::ResourceBundle::CleanupSharedInstance();
 
   ui::ResourceBundle::InitSharedInstanceWithLocale(
-    locale, nullptr, ui::ResourceBundle::DO_NOT_LOAD_COMMON_RESOURCES);
+      locale, nullptr, ui::ResourceBundle::DO_NOT_LOAD_COMMON_RESOURCES);
 
   ui::ResourceBundle& bundle = ui::ResourceBundle::GetSharedInstance();
   bundle.ReloadLocaleResources(locale);
 
-// Load other resource files.
-#if defined(OS_MACOSX)
-  LoadCommonResources();
-#else
+  // Load other resource files.
   base::FilePath pak_dir;
+#if defined(OS_MACOSX)
+  pak_dir = base::mac::FrameworkBundlePath().Append("Resources");
+#else
   PathService::Get(base::DIR_MODULE, &pak_dir);
+#endif
   bundle.AddDataPackFromPath(
       pak_dir.Append(FILE_PATH_LITERAL("content_shell.pak")),
       ui::GetSupportedScaleFactors()[0]);
+#if defined(ENABLE_PDF_VIEWER)
   bundle.AddDataPackFromPath(
       pak_dir.Append(FILE_PATH_LITERAL("pdf_viewer_resources.pak")),
       ui::GetSupportedScaleFactors()[0]);
+#endif  // defined(ENABLE_PDF_VIEWER)
   bundle.AddDataPackFromPath(pak_dir.Append(FILE_PATH_LITERAL(
                                  "blink_image_resources_200_percent.pak")),
                              ui::SCALE_FACTOR_200P);
@@ -77,14 +81,11 @@ void LoadResourceBundle(const std::string& locale) {
   bundle.AddDataPackFromPath(
       pak_dir.Append(FILE_PATH_LITERAL("views_resources_200_percent.pak")),
       ui::SCALE_FACTOR_200P);
-#endif
 }
 
-MainDelegate::MainDelegate() {
-}
+MainDelegate::MainDelegate() {}
 
-MainDelegate::~MainDelegate() {
-}
+MainDelegate::~MainDelegate() {}
 
 std::unique_ptr<ContentClient> MainDelegate::CreateContentClient() {
   return std::unique_ptr<ContentClient>(new ContentClient);

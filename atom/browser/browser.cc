@@ -21,11 +21,12 @@
 
 namespace atom {
 
-Browser::Browser()
-    : is_quiting_(false),
-      is_exiting_(false),
-      is_ready_(false),
-      is_shutdown_(false) {
+Browser::LoginItemSettings::LoginItemSettings() = default;
+Browser::LoginItemSettings::~LoginItemSettings() = default;
+Browser::LoginItemSettings::LoginItemSettings(const LoginItemSettings& other) =
+    default;
+
+Browser::Browser() {
   WindowList::AddObserver(this);
 }
 
@@ -108,14 +109,13 @@ void Browser::SetVersion(const std::string& version) {
 }
 
 std::string Browser::GetName() const {
-  std::string ret = name_override_;
+  std::string ret = brightray::GetOverriddenApplicationName();
   if (ret.empty())
     ret = GetExecutableFileProductName();
   return ret;
 }
 
 void Browser::SetName(const std::string& name) {
-  name_override_ = name;
   brightray::OverrideApplicationName(name);
 }
 

@@ -96,6 +96,7 @@ describe('session module', () => {
         name: '1',
         value: '1'
       }, (error) => {
+        assert(error, 'Should have an error')
         assert.equal(error.message, 'Setting cookie failed')
         done()
       })
@@ -585,35 +586,6 @@ describe('session module', () => {
         done()
       })
       w.loadURL(`https://127.0.0.1:${server.address().port}`)
-    })
-
-    describe('deprecated function signature', () => {
-      it('supports accepting the request', (done) => {
-        session.defaultSession.setCertificateVerifyProc((hostname, certificate, callback) => {
-          assert.equal(hostname, '127.0.0.1')
-          callback(true)
-        })
-
-        w.webContents.once('did-finish-load', () => {
-          assert.equal(w.webContents.getTitle(), 'hello')
-          done()
-        })
-        w.loadURL(`https://127.0.0.1:${server.address().port}`)
-      })
-
-      it('supports rejecting the request', (done) => {
-        session.defaultSession.setCertificateVerifyProc((hostname, certificate, callback) => {
-          assert.equal(hostname, '127.0.0.1')
-          callback(false)
-        })
-
-        const url = `https://127.0.0.1:${server.address().port}`
-        w.webContents.once('did-finish-load', () => {
-          assert.equal(w.webContents.getTitle(), url)
-          done()
-        })
-        w.loadURL(url)
-      })
     })
 
     it('rejects the request when the callback is called with -2', (done) => {

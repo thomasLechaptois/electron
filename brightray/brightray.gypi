@@ -136,12 +136,18 @@
             ],
             'cflags_cc': [
               '-D__STRICT_ANSI__',
+              '-fno-exceptions',
               '-fno-rtti',
             ],
             'ldflags': [
               '-Wl,-z,noexecstack',
             ],
           }],  # OS=="linux"
+          ['OS=="linux" and target_arch in ["ia32", "x64", "arm64"]', {
+            'ldflags': [
+              '-fuse-ld=lld',  # Chromium Clang uses lld for linking
+            ],
+          }],  # OS=="linux" and target_arch in ["ia32", "x64", "arm64"]
           ['OS=="mac"', {
             'defines': [
               # The usage of "webrtc/modules/desktop_capture/desktop_capture_options.h"
@@ -245,7 +251,7 @@
             # perform FPO regardless, so we must explicitly disable.
             # We still want the false setting above to avoid having
             # "/Oy /Oy-" and warnings about overriding.
-            'AdditionalOptions': ['/Oy-', '/d2guard4'],
+            'AdditionalOptions': ['/Oy-', '/guard:cf'],
           },
           'VCLibrarianTool': {
             'LinkTimeCodeGeneration': 'true',  # /LTCG
@@ -293,7 +299,6 @@
             ],
             'ldflags': [
               '-flto=thin',
-              '-fuse-ld=lld',  # Chromium Clang uses lld for doing LTO
               '-Wl,--icf=all',
               '-Wl,--lto-O0',  # this could be removed in future; see https://codereview.chromium.org/2939923004
               '-Wl,-mllvm,-function-sections',
@@ -375,6 +380,7 @@
             '-Wno-undefined-var-template', # https://crbug.com/604888
             '-Wno-unneeded-internal-declaration',
             '-Wno-inconsistent-missing-override',
+            '-Wno-tautological-unsigned-enum-zero-compare',
           ],
         },
       }],
@@ -382,6 +388,7 @@
         'cflags': [
           '-Wno-inconsistent-missing-override',
           '-Wno-undefined-var-template', # https://crbug.com/604888
+          '-Wno-tautological-unsigned-enum-zero-compare',
         ],
       }],
       ['OS=="win"', {

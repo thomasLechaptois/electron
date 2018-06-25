@@ -29,18 +29,18 @@ namespace brightray {
 class InspectableWebContentsDelegate;
 class InspectableWebContentsView;
 
-class InspectableWebContentsImpl :
-    public InspectableWebContents,
-    public content::DevToolsAgentHostClient,
-    public content::WebContentsObserver,
-    public content::WebContentsDelegate,
-    public DevToolsEmbedderMessageDispatcher::Delegate,
-    public net::URLFetcherDelegate {
+class InspectableWebContentsImpl
+    : public InspectableWebContents,
+      public content::DevToolsAgentHostClient,
+      public content::WebContentsObserver,
+      public content::WebContentsDelegate,
+      public DevToolsEmbedderMessageDispatcher::Delegate,
+      public net::URLFetcherDelegate {
  public:
   static void RegisterPrefs(PrefRegistrySimple* pref_registry);
 
   explicit InspectableWebContentsImpl(content::WebContents*);
-  virtual ~InspectableWebContentsImpl();
+  ~InspectableWebContentsImpl() override;
 
   InspectableWebContentsView* GetView() const override;
   content::WebContents* GetWebContents() const override;
@@ -123,8 +123,7 @@ class InspectableWebContentsImpl :
   // content::DevToolsAgentHostClient:
   void DispatchProtocolMessage(content::DevToolsAgentHost* agent_host,
                                const std::string& message) override;
-  void AgentHostClosed(content::DevToolsAgentHost* agent_host,
-                       bool replaced) override;
+  void AgentHostClosed(content::DevToolsAgentHost* agent_host) override;
 
   // content::WebContentsObserver:
   void RenderFrameHostChanged(content::RenderFrameHost* old_host,
@@ -156,13 +155,14 @@ class InspectableWebContentsImpl :
       const GURL& target_url,
       const std::string& partition_id,
       content::SessionStorageNamespace* session_storage_namespace) override;
-  void HandleKeyboardEvent(
-      content::WebContents*, const content::NativeWebKeyboardEvent&) override;
+  void HandleKeyboardEvent(content::WebContents*,
+                           const content::NativeWebKeyboardEvent&) override;
   void CloseContents(content::WebContents* source) override;
   content::ColorChooser* OpenColorChooser(
       content::WebContents* source,
       SkColor color,
-      const std::vector<content::ColorSuggestion>& suggestions) override;
+      const std::vector<blink::mojom::ColorSuggestionPtr>& suggestions)
+      override;
   void RunFileChooser(content::RenderFrameHost* render_frame_host,
                       const content::FileChooserParams& params) override;
   void EnumerateDirectory(content::WebContents* source,
@@ -172,8 +172,7 @@ class InspectableWebContentsImpl :
   // net::URLFetcherDelegate:
   void OnURLFetchComplete(const net::URLFetcher* source) override;
 
-  void SendMessageAck(int request_id,
-                      const base::Value* arg1);
+  void SendMessageAck(int request_id, const base::Value* arg1);
 
   bool frontend_loaded_;
   scoped_refptr<content::DevToolsAgentHost> agent_host_;

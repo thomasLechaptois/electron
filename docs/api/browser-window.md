@@ -235,7 +235,9 @@ It creates a new `BrowserWindow` with native properties as set by the `options`.
     window shadow and window animations. Default is `true`.
   * `vibrancy` String (optional) - Add a type of vibrancy effect to the window, only on
     macOS. Can be `appearance-based`, `light`, `dark`, `titlebar`, `selection`,
-    `menu`, `popover`, `sidebar`, `medium-light` or `ultra-dark`.
+    `menu`, `popover`, `sidebar`, `medium-light` or `ultra-dark`.  Please note that
+    using `frame: false` in combination with a vibrancy value requires that you use a
+    non-default `titleBarStyle` as well.
   * `zoomToPageWidth` Boolean (optional) - Controls the behavior on macOS when
     option-clicking the green stoplight button on the toolbar or by clicking the
     Window > Zoom menu item. If `true`, the window will grow to the preferred
@@ -285,7 +287,7 @@ It creates a new `BrowserWindow` with native properties as set by the `options`.
       between the web pages even when you specified different values for them,
       including but not limited to `preload`, `sandbox` and `nodeIntegration`.
       So it is suggested to use exact same `webPreferences` for web pages with
-      the same `affinity`.
+      the same `affinity`. _This property is experimental_
     * `zoomFactor` Number (optional) - The default zoom factor of the page, `3.0` represents
       `300%`. Default is `1.0`.
     * `javascript` Boolean (optional) - Enables JavaScript support. Default is `true`.
@@ -307,14 +309,14 @@ It creates a new `BrowserWindow` with native properties as set by the `options`.
       canvas features. Default is `false`.
     * `scrollBounce` Boolean (optional) - Enables scroll bounce (rubber banding) effect on
       macOS. Default is `false`.
-    * `blinkFeatures` String (optional) - A list of feature strings separated by `,`, like
+    * `enableBlinkFeatures` String (optional) - A list of feature strings separated by `,`, like
       `CSSVariables,KeyboardEventKey` to enable. The full list of supported feature
-      strings can be found in the [RuntimeEnabledFeatures.json5][blink-feature-string]
+      strings can be found in the [RuntimeEnabledFeatures.json5][runtime-enabled-features]
       file.
     * `disableBlinkFeatures` String (optional) - A list of feature strings separated by `,`,
       like `CSSVariables,KeyboardEventKey` to disable. The full list of supported
       feature strings can be found in the
-      [RuntimeEnabledFeatures.json5][blink-feature-string] file.
+      [RuntimeEnabledFeatures.json5][runtime-enabled-features] file.
     * `defaultFontFamily` Object (optional) - Sets the default font for the font-family.
       * `standard` String (optional) - Defaults to `Times New Roman`.
       * `serif` String (optional) - Defaults to `Times New Roman`.
@@ -359,9 +361,17 @@ It creates a new `BrowserWindow` with native properties as set by the `options`.
       script. You can use the `will-attach-webview` event on [webContents](web-contents.md)
       to strip away the `preload` script and to validate or alter the
       `<webview>`'s initial settings.
-    * `additionArguments` String[] (optional) - A list of strings that will be appended
+    * `additionalArguments` String[] (optional) - A list of strings that will be appended
       to `process.argv` in the renderer process of this app.  Useful for passing small
       bits of data down to renderer process preload scripts.
+    * `safeDialogs` Boolean (optional) - Whether to enable browser style
+      consecutive dialog protection. Default is `false`.
+    * `safeDialogsMessage` String (optional) - The message to display when
+      consecutive dialog protection is triggered. If not defined the default
+      message would be used, note that currently the default message is in
+      English and not localized.
+    * `navigateOnDragDrop` Boolean (optional) - Whether dragging and dropping a
+      file or link onto the page causes a navigation. Default is `false`.
 
 When setting minimum or maximum window size with `minWidth`/`maxWidth`/
 `minHeight`/`maxHeight`, it only constrains the users. It won't prevent you from
@@ -425,7 +435,7 @@ window.onbeforeunload = (e) => {
   e.returnValue = false // equivalent to `return false` but not recommended
 }
 ```
-_**Note**: There is a subtle difference between the behaviors of `window.onbeforeunload = handler` and `window.addEventListener('beforeunload', handler)`. It is recommended to always set the `event.returnValue` explicitly, instead of just returning a value, as the former works more consistently within Electron._
+_**Note**: There is a subtle difference between the behaviors of `window.onbeforeunload = handler` and `window.addEventListener('beforeunload', handler)`. It is recommended to always set the `event.returnValue` explicitly, instead of only returning a value, as the former works more consistently within Electron._
 
 #### Event: 'closed'
 
@@ -490,7 +500,7 @@ Emitted when the window is being resized.
 
 Emitted when the window is being moved to a new position.
 
-__Note__: On macOS this event is just an alias of `moved`.
+__Note__: On macOS this event is an alias of `moved`.
 
 #### Event: 'moved' _macOS_
 
@@ -581,7 +591,7 @@ Returns `BrowserWindow[]` - An array of all opened browser windows.
 
 #### `BrowserWindow.getFocusedWindow()`
 
-Returns `BrowserWindow` - The window that is focused in this application, otherwise returns `null`.
+Returns `BrowserWindow | null` - The window that is focused in this application, otherwise returns `null`.
 
 #### `BrowserWindow.fromWebContents(webContents)`
 
@@ -815,8 +825,11 @@ on the right edge and 50 pixels of controls below the player. In order to
 maintain a 16:9 aspect ratio (standard aspect ratio for HD @1920x1080) within
 the player itself we would call this function with arguments of 16/9 and
 [ 40, 50 ]. The second argument doesn't care where the extra width and height
-are within the content view--only that they exist. Just sum any extra width and
+are within the content view--only that they exist. Sum any extra width and
 height areas you have within the overall content view.
+
+Calling this function with a value of `0` will remove any previously set aspect
+ratios.
 
 #### `win.previewFile(path[, displayName])` _macOS_
 
@@ -999,6 +1012,10 @@ can not be focused on.
 
 Returns `Boolean` - Whether the window is always on top of other windows.
 
+#### `win.moveTop()` _macOS_ _Windows_
+
+Moves window to top(z-order) regardless of focus
+
 #### `win.center()`
 
 Moves window to the center of the screen.
@@ -1136,10 +1153,10 @@ Same as `webContents.capturePage([rect, ]callback)`.
 
 * `url` String
 * `options` Object (optional)
-  * `httpReferrer` String (optional) - A HTTP Referrer url.
+  * `httpReferrer` (String | [Referrer](structures/referrer.md)) (optional) - An HTTP Referrer url.
   * `userAgent` String (optional) - A user agent originating the request.
   * `extraHeaders` String (optional) - Extra headers separated by "\n"
-  * `postData` ([UploadRawData[]](structures/upload-raw-data.md) | [UploadFile[]](structures/upload-file.md) | [UploadFileSystem[]](structures/upload-file-system.md) | [UploadBlob[]](structures/upload-blob.md)) (optional)
+  * `postData` ([UploadRawData[]](structures/upload-raw-data.md) | [UploadFile[]](structures/upload-file.md) | [UploadBlob[]](structures/upload-blob.md)) (optional)
   * `baseURLForDataURL` String (optional) - Base url (with trailing path separator) for files to be loaded by the data url. This is needed only if the specified `url` is a data url and needs to load other files.
 
 Same as `webContents.loadURL(url[, options])`.
@@ -1197,7 +1214,7 @@ menu bar.
 
 * `progress` Double
 * `options` Object (optional)
-  * `mode` String _Windows_ - Mode for the progress bar. Can be `none`, `normal`, `indeterminate`, `error`, or `paused`.
+  * `mode` String _Windows_ - Mode for the progress bar. Can be `none`, `normal`, `indeterminate`, `error` or `paused`.
 
 Sets progress value in progress bar. Valid range is [0, 1.0].
 
@@ -1370,10 +1387,10 @@ Returns `Boolean` - Whether the window is visible on all workspaces.
 
 * `ignore` Boolean
 * `options` Object (optional)
-  * `forward` Boolean (optional) _Windows_ - If true, forwards mouse move
+  * `forward` Boolean (optional) _macOS_ _Windows_ - If true, forwards mouse move
     messages to Chromium, enabling mouse related events such as `mouseleave`.
-	Only used when `ignore` is true. If `ignore` is false, forwarding is always
-	disabled regardless of this value.
+    Only used when `ignore` is true. If `ignore` is false, forwarding is always
+    disabled regardless of this value.
 
 Makes the window ignore all mouse events.
 
@@ -1479,7 +1496,7 @@ Returns `BrowserView | null` - an attached BrowserView. Returns `null` if none i
 **Note:** The BrowserView API is currently experimental and may change or be
 removed in future Electron releases.
 
-[blink-feature-string]: https://cs.chromium.org/chromium/src/third_party/WebKit/Source/platform/runtime_enabled_features.json5?l=70
+[runtime-enabled-features]: https://cs.chromium.org/chromium/src/third_party/blink/renderer/platform/runtime_enabled_features.json5?l=70
 [page-visibility-api]: https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API
 [quick-look]: https://en.wikipedia.org/wiki/Quick_Look
 [vibrancy-docs]: https://developer.apple.com/documentation/appkit/nsvisualeffectview?preferredLanguage=objc
