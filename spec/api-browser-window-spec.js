@@ -1,3 +1,5 @@
+import { emittedOnce } from './events-helpers';
+
 'use strict'
 
 const assert = require('assert')
@@ -1572,6 +1574,19 @@ describe('BrowserWindow module', () => {
           }
         })
         w.loadURL('file://' + path.join(fixtures, 'api', 'preload.html'))
+      })
+
+      it.only('webview in sandbox renderer', async () => {
+        w.destroy()
+        w = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            sandbox: true,
+            preload: preload
+          }
+        })
+        w.loadURL('file://' + path.join(fixtures, 'pages', 'webview-no-script.html'))
+        await emittedOnce(ipcMain, 'pong')
       })
     })
 
