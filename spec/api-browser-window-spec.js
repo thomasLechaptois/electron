@@ -1,5 +1,3 @@
-import { emittedOnce } from './events-helpers';
-
 'use strict'
 
 const assert = require('assert')
@@ -10,7 +8,7 @@ const os = require('os')
 const qs = require('querystring')
 const http = require('http')
 const {closeWindow} = require('./window-helpers')
-
+const {emittedOnce} = require('./events-helpers')
 const {ipcRenderer, remote, screen} = require('electron')
 const {app, ipcMain, BrowserWindow, BrowserView, protocol, session, webContents} = remote
 
