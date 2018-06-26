@@ -1574,7 +1574,7 @@ describe('BrowserWindow module', () => {
         w.loadURL('file://' + path.join(fixtures, 'api', 'preload.html'))
       })
 
-      it.only('webview in sandbox renderer', async () => {
+      it('webview in sandbox renderer', async () => {
         w.destroy()
         w = new BrowserWindow({
           show: false,
